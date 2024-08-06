@@ -1,0 +1,66 @@
+//@version=5
+indicator('[blackcat] L3 Banker Fund Flow Trend Oscillator', overlay=true)
+
+// Functions
+xrf(values, length) =>
+    r_val = float(na)
+    if length >= 1
+        for i = 0 to length by 1
+            if na(r_val) or not na(values[i])
+                r_val := values[i]
+                r_val
+    r_val
+
+xsa(src, len, wei) =>
+    sumf = 0.0
+    ma = 0.0
+    out = 0.0
+    sumf := nz(sumf[1]) - nz(src[len]) + src
+    ma := na(src[len]) ? na : sumf / len
+    out := na(out[1]) ? ma : (src * wei + out[1] * (len - wei)) / len
+    out
+
+// Set up a simple model of banker fund flow trend
+fundtrend = (3 * xsa((close - ta.lowest(low, 27)) / (ta.highest(high, 27) - ta.lowest(low, 27)) * 100, 5, 1) - 2 * xsa(xsa((close - ta.lowest(low, 27)) / (ta.highest(high, 27) - ta.lowest(low, 27)) * 100, 5, 1), 3, 1) - 50) * 1.032 + 50
+// Define typical price for banker fund
+typ = (2 * close + high + low + open) / 5
+// Lowest low with mid term fib # 34
+lol = ta.lowest(low, 34)
+// Highest high with mid term fib # 34
+hoh = ta.highest(high, 34)
+// Define banker fund flow bull bear line
+bullbearline = ta.ema((typ - lol) / (hoh - lol) * 100, 13)
+// Define banker entry signal
+bankerentry = ta.crossover(fundtrend, bullbearline) and bullbearline < 25
+
+// Initialize arrays to store the indices and prices of the last 5 bankerentry signals
+var float[] entry_prices = array.new_float(5, na)
+var int[] entry_indices = array.new_int(5, na)
+
+if bankerentry
+    array.shift(entry_prices)
+    array.shift(entry_indices)
+    array.push(entry_prices, close)
+    array.push(entry_indices, bar_index)
+
+// Draw lines for the last 5 bankerentry signals
+for i = 0 to array.size(entry_prices) - 1 by 1
+    if not na(array.get(entry_prices, i))
+        line.new(x1=array.get(entry_indices, i), y1=array.get(entry_prices, i), x2=array.get(entry_indices, i) + 10, y2=array.get(entry_prices, i), xloc=xloc.bar_index, extend=extend.right, color=color.white, style=line.style_dashed, width=1)
+
+// Determine if the price has crossed above the rectangle
+var bool crossed_above = false
+if array.size(entry_prices) >= 2
+    crossed_above := high > array.get(entry_prices, array.size(entry_prices) - 2)
+    crossed_above
+
+// Draw rectangle between the last two entry prices with dynamic color
+if array.size(entry_prices) >= 2
+    var box rect_id = na
+    if not na(rect_id)
+        box.delete(rect_id)
+    rect_color = crossed_above ? color.green : color.red
+    rect_id := box.new(left=array.get(entry_indices, array.size(entry_indices) - 2), top=array.get(entry_prices, array.size(entry_prices) - 1), right=bar_index, bottom=array.get(entry_prices, array.size(entry_prices) - 2), border_color=rect_color, border_width=2, bgcolor=color.new(rect_color, 80))
+    rect_id
+
+
