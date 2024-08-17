@@ -1,0 +1,84 @@
+
+//@version=5
+indicator(title="Divergence ", overlay=false, shorttitle="Divergence ")
+
+// Inputs for the index choices
+symbolChoice2 = input.symbol("XAUUSD", title="Divergence with:", group="DEFAULT MODE")
+
+// Checkbox for choosing calculation symbols
+useSymbol1and2 = input.bool(false, title="", group="USE INSTEAD OF CHART SYMBOL", inline="group2")
+symbolChoice1 = input.symbol("SPX", title="", group="USE INSTEAD OF CHART SYMBOL", inline="group2")
+
+// Choose the appropriate source based on user input
+sourceSymbol1 = useSymbol1and2 ? symbolChoice1 : syminfo.tickerid
+sourceSymbol2 = symbolChoice2
+src1 = request.security(sourceSymbol1, "", close)
+src2 = request.security(sourceSymbol2, "", close)
+
+src_log_1 = math.log(src1)
+src_log_2 = math.log(src2)
+
+len = input.int(defval=50, minval=1, title="Length")
+smooth_factor = 20
+
+// Calculate the linear regression coefficients on the logarithmic scale using the selected timeframe for Symbol 1
+lrc_1 = ta.linreg(src_log_1, len, 0)
+// Calculate the linear regression coefficients on the logarithmic scale using the selected timeframe for Symbol 2
+lrc_2 = ta.linreg(src_log_2, len, 0)
+
+// Smooth the linear regression with an EMA for Symbol 1
+smoothed_lrc_1 = ta.ema(lrc_1, smooth_factor)
+// Smooth the linear regression with an EMA for Symbol 2
+smoothed_lrc_2 = ta.ema(lrc_2, smooth_factor)
+
+// Calculate the standard deviation of the logarithmic closing price using the selected timeframe for Symbol 1
+std_dev_1 = ta.stdev(src_log_1, len)
+// Calculate the standard deviation of the logarithmic closing price using the selected timeframe for Symbol 2
+std_dev_2 = ta.stdev(src_log_2, len)
+
+// Normalize the standard deviations to a scale from -100 to 100 over 200 periods
+normalized_std_dev_1 = (std_dev_1 - ta.lowest(std_dev_1, 50)) / (ta.highest(std_dev_1, 50) - ta.lowest(std_dev_1, 50)) * 50 - 25
+normalized_std_dev_2 = (std_dev_2 - ta.lowest(std_dev_2, 50)) / (ta.highest(std_dev_2, 50) - ta.lowest(std_dev_2, 50)) * 50 - 25
+
+// Calculate the difference between the price and the smoothed regression line for Symbol 1
+price_diff_1 = src1 - math.exp(smoothed_lrc_1)
+// Calculate the difference between the price and the smoothed regression line for Symbol 2
+price_diff_2 = src2 - math.exp(smoothed_lrc_2)
+
+// Define inputs for color selection
+positiveColor = input.color(color.gray, title="Positive Divergence")
+negativeColor = input.color(color.orange, title="Negative Divergence")
+
+// Plot the horizontal line at level 0
+hline(0, "Zero Line", color=color.gray, linestyle=hline.style_dashed, linewidth=1)
+
+// Plot the difference between the price of Symbol 1 and Symbol 2 with different colors for positive and negative values
+price_diff_combined = price_diff_1 - price_diff_2
+plot(price_diff_combined, title="Divergence Delta", color=color.new(price_diff_combined >= 0 ? positiveColor : negativeColor, 0), linewidth=2)
+
+
+//
+// Define the function to detect squeeze signal
+buddhaSqueeze(series float series, int length, float stdDevKC , float stdDevBB) =>
+    atr = ta.atr(length)
+    sDev = ta.stdev(series, length)
+    denom = stdDevKC  * atr
+    bbsInd = denom != 0 ? (stdDevBB * sDev) / denom : 0
+    squeeze = bbsInd < 1
+
+// Inputs
+int i_length = input.int(defval=21, title="Chart Length", options=[8, 13, 21, 34, 55], display=display.none)
+float stdDevBB  = input.float(defval=2.0, title="Bollinger Band StdDev", step=0.1, minval=0, maxval=5, display=display.none)
+float stdDevKC  = input.float(defval=1.5, title="Keltner StdDev", step=0.1, minval=0, maxval=2, display=display.none)
+
+// Calculate TTM Oscillator
+series float osc_value = (ta.highest(high, i_length) + ta.lowest(low, i_length)) / 2 + ta.ema(close, i_length)
+series float oscillator = (ta.linreg(close - osc_value / 2, i_length, 0))
+
+// Determine squeeze signal
+series bool squeezeSignal = buddhaSqueeze(close, i_length, stdDevKC, stdDevBB)
+series color squeezeColor = squeezeSignal ? color.rgb(255, 255, 0) : na
+
+// Plot yellow circles on the zero line where squeeze signal occurs
+plot(0, "Squeeze", squeezeColor, 3, plot.style_circles, editable = false)
+
