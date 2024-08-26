@@ -1,0 +1,83 @@
+//@version=5
+indicator(shorttitle="FLI", title="Follow Line Indicator", overlay=true)
+
+// Girdi parametreleri
+BBperiod      = input.int(defval = 22, title = "BB Period", minval = 1)
+BBdeviations  = input.float(defval = 2.00, title = "BB Deviations", minval = 0.1, step = 0.05)
+UseATRfilter  = input.bool(defval = true, title = "ATR Filter")
+ATRperiod     = input.int(defval = 5, title = "ATR Period", minval = 1)
+hl            = input.bool(defval = false, title = "Hide Labels")
+tpPercent     = input.float(defval = 0.2, title = "Take Profit %", minval = 0.1, step = 0.1)
+slPercent     = input.float(defval = 0.3, title = "Stop Loss %", minval = 0.1, step = 0.1)
+
+// BB ve ATR hesaplamaları
+BBUpper = ta.sma(close, BBperiod) + ta.stdev(close, BBperiod) * BBdeviations
+BBLower = ta.sma(close, BBperiod) - ta.stdev(close, BBperiod) * BBdeviations
+atrValue = ta.atr(ATRperiod)
+
+// Trend ve sinyaller
+var float TrendLine = na
+var float iTrend = na
+var float buy = na
+var float sell = na
+
+BBSignal = close > BBUpper ? 1 : close < BBLower ? -1 : 0
+
+if BBSignal == 1 and UseATRfilter
+    TrendLine := low - atrValue
+    if TrendLine < nz(TrendLine[1])
+        TrendLine := nz(TrendLine[1])
+if BBSignal == -1 and UseATRfilter
+    TrendLine := high + atrValue
+    if TrendLine > nz(TrendLine[1])
+        TrendLine := nz(TrendLine[1])
+if BBSignal == 0 and UseATRfilter
+    TrendLine := nz(TrendLine[1])
+
+if BBSignal == 1 and not UseATRfilter
+    TrendLine := low
+    if TrendLine < nz(TrendLine[1])
+        TrendLine := nz(TrendLine[1])
+if BBSignal == -1 and not UseATRfilter
+    TrendLine := high
+    if TrendLine > nz(TrendLine[1])
+        TrendLine := nz(TrendLine[1])
+if BBSignal == 0 and not UseATRfilter
+    TrendLine := nz(TrendLine[1])
+
+iTrend := nz(iTrend[1])
+if TrendLine > nz(TrendLine[1])
+    iTrend := 1
+if TrendLine < nz(TrendLine[1])
+    iTrend := -1
+
+buy := iTrend[1] == -1 and iTrend == 1 ? 1 : na
+sell := iTrend[1] == 1 and iTrend == -1 ? 1 : na
+
+plot(TrendLine, color = iTrend > 0 ? color.blue : color.red, style = plot.style_line, linewidth = 2, transp = 0, title = "Trend Line")
+plotshape(buy == 1 and not hl ? TrendLine - atrValue : na, text = '💣', style = shape.labelup, location = location.absolute, color = color.blue, textcolor = color.white, offset = 0, transp = 0, size = size.auto)
+plotshape(sell == 1 and not hl ? TrendLine + atrValue : na, text = '🔨', style = shape.labeldown, location = location.absolute, color = color.red, textcolor = color.white, offset = 0, transp = 0, size = size.auto)
+
+alertcondition(sell == 1, title = "Sell", message = "Sell")
+alertcondition(buy == 1, title = "Buy", message = "Buy")
+alertcondition(buy == 1 or sell == 1, title = "Buy/Sell", message = "Buy/Sell")
+
+// TP ve SL hesaplamaları
+var float tpLevel = na
+var float slLevel = na
+
+if (buy)
+    tpLevel := close * (1 + tpPercent / 100)
+    slLevel := close * (1 - slPercent / 100)
+    line.new(x1 = bar_index, y1 = close, x2 = bar_index + 1, y2 = tpLevel, color = color.green, style = line.style_dashed)
+    line.new(x1 = bar_index, y1 = close, x2 = bar_index + 1, y2 = slLevel, color = color.red, style = line.style_dashed)
+    label.new(bar_index, tpLevel, "TP", xloc = xloc.bar_index, yloc = yloc.price, textcolor = color.white, color = color.green, style = label.style_label_down, size = size.small)
+    label.new(bar_index, slLevel, "SL", xloc = xloc.bar_index, yloc = yloc.price, textcolor = color.white, color = color.red, style = label.style_label_down, size = size.small)
+
+if (sell)
+    tpLevel := close * (1 - tpPercent / 100)
+    slLevel := close * (1 + slPercent / 100)
+    line.new(x1 = bar_index, y1 = close, x2 = bar_index + 1, y2 = tpLevel, color = color.green, style = line.style_dashed)
+    line.new(x1 = bar_index, y1 = close, x2 = bar_index + 1, y2 = slLevel, color = color.red, style = line.style_dashed)
+    label.new(bar_index, tpLevel, "TP", xloc = xloc.bar_index, yloc = yloc.price, textcolor = color.white, color = color.green, style = label.style_label_up, size = size.small)
+    label.new(bar_index, slLevel, "SL", xloc = xloc.bar_index, yloc = yloc.price, textcolor = color.white, color = color.red, style = label.style_label_up, size = size.small)
